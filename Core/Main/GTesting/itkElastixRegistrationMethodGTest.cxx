@@ -3103,3 +3103,43 @@ GTEST_TEST(itkElastixRegistrationMethod, OutputTransformParameterFileFormat)
 
   EXPECT_EQ(parameterMapsFromToml, parameterMapsFromText);
 }
+
+GTEST_TEST(itkElastixRegistrationMethod, TransformMetricAndImageMetricRegistration)
+{
+  static constexpr auto ImageDimension = 3U;
+  using PixelType = float;
+  using ImageType = itk::Image<PixelType, ImageDimension>;
+  using SizeType = itk::Size<ImageDimension>;
+
+  const SizeType imageSize{ { 8, 8, 8 } };
+
+  const auto fixedImage0 = CreateImage<PixelType>(imageSize);
+  const auto fixedImage1 = CreateImage<PixelType>(imageSize);
+
+  const auto movingImage0 = CreateImage<PixelType>(imageSize);
+  const auto movingImage1 = CreateImage<PixelType>(imageSize);
+
+  elx::DefaultConstruct<ElastixRegistrationMethodType<ImageType>> registration{};
+
+  registration.SetFixedImage(fixedImage0);
+  registration.AddFixedImage(fixedImage1);
+  registration.SetMovingImage(movingImage0);
+  registration.AddMovingImage(movingImage1);
+  registration.SetParameterObject(CreateParameterObject(ParameterMapType{
+    // Parameters in alphabetic order:
+    { "FixedImagePyramid", { "FixedSmoothingImagePyramid", "FixedSmoothingImagePyramid" } },
+    { "Interpolator", { "BSplineInterpolator", "BSplineInterpolator" } },
+    { "ImageSampler", { "Full", "Full" } },
+    { "MaximumNumberOfIterations", { "5" } },
+    { "Metric",
+      { "AdvancedMattesMutualInformation", "AdvancedMattesMutualInformation", "TransformBendingEnergyPenalty" } },
+    { "Metric0Weight", { "1.0" } },
+    { "Metric1Weight", { "1.0" } },
+    { "MovingImagePyramid", { "MovingSmoothingImagePyramid", "MovingSmoothingImagePyramid" } },
+    { "NumberOfResolutions", { "1" } },
+    { "Optimizer", { "AdaptiveStochasticGradientDescent" } },
+    { "Registration", { "MultiMetricMultiResolutionRegistration" } },
+    { "Transform", { "BSplineTransform" } } }));
+
+  EXPECT_NO_THROW(registration.Update());
+}

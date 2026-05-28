@@ -132,10 +132,6 @@ public:
   using MovingImageRegionType = typename MovingImageType::RegionType;
   using MovingImageDerivativeScalesType = FixedArray<double, Self::MovingImageDimension>;
 
-  /** Typedef for transform penalty metrics. */
-  typedef TransformPenaltyTerm<TFixedImage>             TransformMetricType;
-  typedef typename TransformMetricType::Pointer         TransformMetricPointer;
-
   /** Typedef for the PointSetMetric. */
   using FixedPointSetType = PointSet<CoordinateRepresentationType,
                                      TFixedImage::ImageDimension,
