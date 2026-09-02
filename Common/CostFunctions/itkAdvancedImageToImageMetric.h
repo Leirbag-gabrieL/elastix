@@ -386,6 +386,15 @@ protected:
   MovingImageLimiterOutputType m_MovingImageMinLimit{ 0 };
   MovingImageLimiterOutputType m_MovingImageMaxLimit{ 1 };
 
+
+  /** Retrieves a subrange of the samples from its ImageSampler, for the specified work unit. */
+  auto
+  GetRangeOfSamples(const ThreadIdType workUnitID) const
+  {
+    return ImageSample<TFixedImage>::GetRangeOfSamples(
+      m_ImageSampler->GetOutput()->CastToSTLConstContainer(), this->Superclass::GetNumberOfWorkUnits(), workUnitID);
+  }
+
   /** Multi-threaded metric computation. */
 
   /** Multi-threaded version of GetValue(). */

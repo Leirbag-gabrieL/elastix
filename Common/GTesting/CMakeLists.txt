@@ -21,6 +21,7 @@ set(ELX_COMMON_GTEST_SOURCES
   itkImageRandomSamplerSparseMaskGTest.cxx
   itkImageSamplerGTest.cxx
   itkParameterMapInterfaceTest.cxx
+  itkParzenWindowHistogramImageToImageMetricGTest.cxx
 )
 
 if(USE_ImpactMetric)
@@ -35,19 +36,33 @@ target_compile_definitions(CommonGTest PRIVATE
   ELX_CMAKE_CURRENT_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
 )
 
+if (ITK_VERSION VERSION_LESS_EQUAL 5.4.6)
+  target_link_libraries(CommonGTest PUBLIC
+    GTest::GTest
+    GTest::Main
+    ${ELASTIX_ITK_EXECUTABLE_LIBRARIES}
+    elastix_lib
+  )
+else()
+  target_link_libraries(CommonGTest PUBLIC
+    GTest::gtest
+    GTest::gtest_main
+    ${ELASTIX_ITK_EXECUTABLE_LIBRARIES}
+    elastix_lib
+  )
+endif()
+
 if(USE_ImpactMetric)
   find_package(Torch REQUIRED)
-  target_link_libraries(CommonGTest
-   GTest::GTest GTest::Main
-    ${ITK_LIBRARIES}
-    elastix_lib
-    "${TORCH_LIBRARIES}")
-else()
-  target_link_libraries(CommonGTest
-    GTest::GTest GTest::Main
-    ${ITK_LIBRARIES}
-    elastix_lib
-    )
+  target_link_libraries(CommonGTest PUBLIC "${TORCH_LIBRARIES}")
+  target_include_directories(CommonGTest PRIVATE ${ITKIMPACT_INCLUDE_DIR})
 endif()
+
+target_include_directories(CommonGTest PRIVATE
+  ${elastix_SOURCE_DIR}/Components/Metrics
+  ${elastix_SOURCE_DIR}/Components/ResampleInterpolators
+  ${elastix_SOURCE_DIR}/Components/Resamplers
+  ${elastix_SOURCE_DIR}/Components/Transforms
+)
 
 add_test(NAME CommonGTest_test COMMAND CommonGTest)

@@ -86,7 +86,20 @@ find_package(ITK 5.4.1 REQUIRED COMPONENTS
     ${_GPU_depends}
     ${_ITK_io_depends}
     )
-include(${ITK_USE_FILE})
+
+if(ITK_VERSION_MAJOR GREATER_EQUAL 6)
+  # ITK 6+: use modern interface library targets.
+  # itk_generate_factory_registration() configures the factory registration
+  # headers and sets INTERFACE properties on the factory meta-module targets
+  # (ITK::ITKImageIO, ITK::ITKTransformIO, ITK::ITKMeshIO).
+  # Must be called before any add_subdirectory() so the target properties are
+  # ready when subdirectory CMakeLists.txt files reference them.
+  itk_generate_factory_registration()
+else()
+  # ITK 5.x: UseITK.cmake sets global include/link directories and calls
+  # itk_generate_factory_registration() internally.
+  include(${ITK_USE_FILE})
+endif()
 
 #---------------------------------------------------------------------
 # Add the CMake dir as an additional module path,
@@ -99,6 +112,10 @@ include(elastixVersion)
 
 # Function for exporting targets
 include(elastixExportTarget)
+
+# ITK dependency helper: provides elastix_link_itk() macro and
+# ELASTIX_ITK_EXECUTABLE_LIBRARIES / ELASTIX_ITK_ALL_LIBRARIES variables.
+include(ElastixITKDeps)
 
 if (MSVC)
   add_compile_options(/W3)
@@ -129,13 +146,12 @@ if(ELASTIX_USE_OPENCL)
   endif()
 
   # Include the OpenCL include directories to elastix
-  include_directories(${OPENCL_INCLUDE_DIRS})
+  # Note: OPENCL_INCLUDE_DIRS and -DELASTIX_USE_OPENCL are set as PUBLIC
+  # target properties on elxOpenCL (Common/OpenCL/CMakeLists.txt) and
+  # propagate transitively to all targets that link elxOpenCL.
 
   # Add some useful macro's
   include(elastixOpenCL)
-
-  # Add definition for the OpenCL
-  add_definitions(-DELASTIX_USE_OPENCL)
 endif()
 
 #---------------------------------------------------------------------
@@ -145,8 +161,6 @@ option(ELASTIX_USE_EIGEN "Use Eigen library." OFF)
 
 if(ELASTIX_USE_EIGEN)
   find_package(Eigen3 REQUIRED)
-  include_directories(${EIGEN3_INCLUDE_DIR})
-  add_definitions(-DELASTIX_USE_EIGEN)
 endif()
 
 #---------------------------------------------------------------------
@@ -235,6 +249,10 @@ endif()
 
 #---------------------------------------------------------------------
 # Include directories
+# Note: Target-based include directories are set in the individual
+# library CMakeLists.txt files using target_include_directories().
+# The variables below are kept for ElastixConfig.cmake generation
+# to support external projects that use the old-style include_directories().
 
 set(elxCommon_INCLUDE_DIRECTORIES
   ${elastix_SOURCE_DIR}/Common
@@ -284,15 +302,7 @@ set(elxINCLUDE_DIRECTORIES
   ${ELASTIX_USER_COMPONENT_DIRS}
 )
 
-include_directories(${elxINCLUDE_DIRECTORIES})
-
-# include the OpenCL directories
-# The key-word BEFORE is important here, because the elastix distribution
-# contains some files with the same name as in the ITK distribution.
-# Some bugs were fixed and features added. When these are contributed back
-# to the ITK the BEFORE keyword is not needed anymore.
 if(ELASTIX_USE_OPENCL)
-  include_directories(BEFORE ${elxCommon_OpenCL_INCLUDE_DIRECTORIES})
   list(APPEND elxINCLUDE_DIRECTORIES ${elxCommon_OpenCL_INCLUDE_DIRECTORIES})
 endif()
 

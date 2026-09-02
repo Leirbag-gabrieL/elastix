@@ -424,7 +424,7 @@ AdvancedImageToImageMetric<TFixedImage, TMovingImage>::EvaluateMovingImageValueA
       else if (m_ReducedBSplineInterpolator && !Superclass::m_ComputeGradient)
       {
         /** Compute moving image value and gradient using the B-spline kernel. */
-        movingImageValue = Superclass::m_Interpolator->EvaluateAtContinuousIndex(cindex);
+        movingImageValue = m_ReducedBSplineInterpolator->EvaluateAtContinuousIndex(cindex);
         *gradient = m_ReducedBSplineInterpolator->EvaluateDerivativeAtContinuousIndex(cindex);
         // m_ReducedBSplineInterpolator->EvaluateValueAndDerivativeAtContinuousIndex(
         //  cindex, movingImageValue, *gradient );
@@ -468,8 +468,8 @@ AdvancedImageToImageMetric<TFixedImage, TMovingImage>::EvaluateMovingImageValueA
            * First the gradient is rotated backwards to a standardized axis.
            */
           using InternalMatrixType = typename MovingImageType::DirectionType::InternalMatrixType;
-          const InternalMatrixType M = this->GetMovingImage()->GetDirection().GetVnlMatrix();
-          vnl_vector<double>       rotated_gradient_vnl = M.transpose() * gradient->GetVnlVector();
+          const InternalMatrixType directionMatrix = this->GetMovingImage()->GetDirection().GetVnlMatrix();
+          vnl_vector<double>       rotated_gradient_vnl = directionMatrix.transpose() * gradient->GetVnlVector();
 
           /** Then scales are applied. */
           for (unsigned int i = 0; i < MovingImageDimension; ++i)
@@ -478,7 +478,7 @@ AdvancedImageToImageMetric<TFixedImage, TMovingImage>::EvaluateMovingImageValueA
           }
 
           /** The scaled gradient is then rotated forwards again. */
-          rotated_gradient_vnl = M * rotated_gradient_vnl;
+          rotated_gradient_vnl = directionMatrix * rotated_gradient_vnl;
 
           /** Copy the vnl version back to the original. */
           for (unsigned int i = 0; i < MovingImageDimension; ++i)
@@ -490,7 +490,11 @@ AdvancedImageToImageMetric<TFixedImage, TMovingImage>::EvaluateMovingImageValueA
     } // end if gradient
     else
     {
-      movingImageValue = Superclass::m_Interpolator->EvaluateAtContinuousIndex(cindex);
+      movingImageValue = m_BSplineInterpolator
+                           ? m_BSplineInterpolator->EvaluateAtContinuousIndex(cindex, optionalThreadId...)
+                         : m_BSplineInterpolatorFloat
+                           ? m_BSplineInterpolatorFloat->EvaluateAtContinuousIndex(cindex, optionalThreadId...)
+                           : Superclass::m_Interpolator->EvaluateAtContinuousIndex(cindex);
     }
   } // end if sampleOk
 

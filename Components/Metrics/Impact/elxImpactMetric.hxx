@@ -189,8 +189,26 @@ ImpactMetric<TElastix>::GenerateModelsConfiguration(unsigned int level,
     itkExceptionMacro("Missing required parameter: \"" + prefix + "LayersMask" + std::to_string(level) + "\".");
   }
 
+  /** Get the patch overlap, per axis and per model, in voxels of the model's own grid, laid
+   * out like PatchSize. Optional. It is consumed only when the Static path tiles: a patch
+   * size of 0 runs the whole image in a single pass, where nothing is reassembled and the
+   * overlap is unused.
+   * The default is a quarter of each patch axis, so that a configuration tiled to fit in
+   * limited VRAM blends its patches instead of stitching visible seams. It is per axis
+   * rather than a single value because an anisotropic patch given the same overlap on every
+   * axis blends its short axis over a far larger fraction of itself than its long one. */
+  std::vector<unsigned int> overlapVec(totalNumberOfPatchSizeParameterPerModel, 0u);
+  for (unsigned int k = 0; k < totalNumberOfPatchSizeParameterPerModel; ++k)
+  {
+    overlapVec[k] = patchSizeVec[k] / 4u;
+  }
+  configuration.ReadParameter<unsigned int>(
+    overlapVec, prefix + "Overlap" + std::to_string(level), 0, totalNumberOfPatchSizeParameterPerModel - 1, 1);
+  std::vector<std::vector<unsigned int>> overlapVecByModel =
+    GroupByDimensions<unsigned int>(overlapVec, numberOfPatchSizeParameterPerModel);
 
-  // Build the ModelConfiguration object for each model.
+
+  // Build the ImpactModelConfiguration object for each model.
   // Each configuration includes model path, input dimension, channel count,
   // patch size, voxel size, and layer mask.
   // In static mode, we flag the model to cache features at init.
@@ -198,13 +216,16 @@ ImpactMetric<TElastix>::GenerateModelsConfiguration(unsigned int level,
   {
     try
     {
+      // Backend itk::ImpactModelConfiguration ctor order: (..., voxelSize, overlap, layersMask,
+      // useMixedPrecision). The overlap reaches the Static path, which tiles whenever the
+      // patch size is non-zero; the Jacobian path never reads it.
       modelsConfiguration.emplace_back(modelsPathVec[i],
                                        modelsDimensionVec[i],
                                        numberOfChannelsVec[i],
                                        patchSizeVecByModel[i],
                                        voxelSizeVecByModel[i],
+                                       overlapVecByModel[i],
                                        GetBooleanVectorFromString(layersMaskVec[i], false),
-                                       mode == "Static",
                                        useMixedPrecision);
     }
     catch (const c10::Error & e)
@@ -384,7 +405,7 @@ ImpactMetric<TElastix>::BeforeEachResolution()
   {
     std::vector<bool> layersMask = this->GetFixedModelsConfiguration()[i].GetLayersMask();
     fixedNumberOfLayers += std::count(layersMask.begin(), layersMask.end(), true);
-    this->GetFixedModelsConfiguration()[i].to(this->GetDevice());
+    itk::ModelTo(this->GetFixedModelsConfiguration()[i], this->GetDevice());
   }
 
   int movingNumberOfLayers = 0;
@@ -392,7 +413,7 @@ ImpactMetric<TElastix>::BeforeEachResolution()
   {
     std::vector<bool> layersMask = this->GetMovingModelsConfiguration()[i].GetLayersMask();
     movingNumberOfLayers += std::count(layersMask.begin(), layersMask.end(), true);
-    this->GetMovingModelsConfiguration()[i].to(this->GetDevice());
+    itk::ModelTo(this->GetMovingModelsConfiguration()[i], this->GetDevice());
   }
 
   if (fixedNumberOfLayers != movingNumberOfLayers)
@@ -437,33 +458,34 @@ ImpactMetric<TElastix>::BeforeEachResolution()
 
   if (mode == "Static")
   {
-    std::string writeFeatureMapsStr = "false";
-    configuration.ReadParameter(writeFeatureMapsStr, "ImpactWriteFeatureMaps", this->GetComponentLabel(), level, 0);
-    if (writeFeatureMapsStr != "false")
+    std::string featureMapOutputDirectory = "";
+    configuration.ReadParameter(
+      featureMapOutputDirectory, "ImpactFeatureMapOutputDirectory", this->GetComponentLabel(), level, 0);
+    if (!featureMapOutputDirectory.empty())
     {
       // If enabled, prepare output directory for feature map export (Static mode)
-      if (!std::filesystem::exists(writeFeatureMapsStr))
+      if (!std::filesystem::exists(featureMapOutputDirectory))
       {
         try
         {
-          std::filesystem::create_directories(writeFeatureMapsStr);
-          std::filesystem::permissions(writeFeatureMapsStr,
+          std::filesystem::create_directories(featureMapOutputDirectory);
+          std::filesystem::permissions(featureMapOutputDirectory,
                                        std::filesystem::perms::owner_all | std::filesystem::perms::group_all |
                                          std::filesystem::perms::others_all,
                                        std::filesystem::perm_options::replace);
           this->SetWriteFeatureMaps(true);
-          this->SetFeatureMapsPath(writeFeatureMapsStr);
+          this->SetFeatureMapsPath(featureMapOutputDirectory);
         }
         catch (std::filesystem::filesystem_error & e)
         {
-          itkExceptionMacro("Error creating directory for feature maps: " << writeFeatureMapsStr << "\n"
+          itkExceptionMacro("Error creating directory for feature maps: " << featureMapOutputDirectory << "\n"
                                                                           << "Exception: " << e.what());
         }
       }
       else
       {
         this->SetWriteFeatureMaps(true);
-        this->SetFeatureMapsPath(writeFeatureMapsStr);
+        this->SetFeatureMapsPath(featureMapOutputDirectory);
       }
     }
   }

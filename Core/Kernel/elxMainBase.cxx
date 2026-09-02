@@ -28,16 +28,18 @@
 
 #include "elxMainBase.h"
 #include "elxComponentLoader.h"
+#include "elxConversion.h"
 
 #include "elxMacro.h"
 #include "itkMultiThreaderBase.h"
 
 #ifdef ELASTIX_USE_OPENCL
-#  include "itkOpenCLContext.h"
+#  include "../ITKimprovements/itkOpenCLContext.h"
 #  include "itkOpenCLSetup.h"
 #endif
 
 #include <cstdlib>
+#include <limits>
 #include <sstream>
 
 namespace elastix
@@ -125,11 +127,7 @@ MainBase::Run(const ArgumentMapType & argmap, const ParameterMapType & inputMap)
   /** Initialize the configuration object with the
    * command line parameters entered by the user.
    */
-  if (m_Configuration->Initialize(argmap, inputMap) != 0)
-  {
-    log::error("ERROR: Something went wrong during initialization of the configuration object.");
-  }
-
+  m_Configuration->Initialize(argmap, inputMap);
   return this->Run();
 } // end Run()
 
@@ -409,19 +407,28 @@ MainBase::SetProcessPriority() const
 void
 MainBase::SetMaximumNumberOfThreads() const
 {
-  /** Get the number of threads from the command line. */
-  std::string maximumNumberOfThreadsString = m_Configuration->GetCommandLineArgument("-threads");
+  // Get the number of threads from the command line. If supplied, set the maximum number of threads.
+  const auto commandLineKey = "-threads";
 
-  /** If supplied, set the maximum number of threads. */
-  if (!maximumNumberOfThreadsString.empty())
+  if (const std::string commandLineArgument = m_Configuration->GetCommandLineArgument(commandLineKey);
+      !commandLineArgument.empty())
   {
-    const int maximumNumberOfThreads = atoi(maximumNumberOfThreadsString.c_str());
-    itk::MultiThreaderBase::SetGlobalMaximumNumberOfThreads(maximumNumberOfThreads);
+    if (itk::ThreadIdType numberOfThreads{}; Conversion::StringToValue(commandLineArgument, numberOfThreads))
+    {
+      itk::MultiThreaderBase::SetGlobalMaximumNumberOfThreads(numberOfThreads);
 
-    // The following statement (getting and setting GlobalDefaultNumberOfThreads) may look redundant, but it's not
-    // (using ITK 5.4.0)! The Set function ensures that GlobalDefaultNumberOfThreads <= GlobalMaximumNumberOfThreads.
-    // (GlobalDefaultNumberOfThreads is important, as ITK uses this number when constructing the ThreadPool.)
-    itk::MultiThreaderBase::SetGlobalDefaultNumberOfThreads(itk::MultiThreaderBase::GetGlobalDefaultNumberOfThreads());
+      // The following statement (getting and setting GlobalDefaultNumberOfThreads) may look redundant, but it's not
+      // (using ITK 5.4.0)! The Set function ensures that GlobalDefaultNumberOfThreads <= GlobalMaximumNumberOfThreads.
+      // (GlobalDefaultNumberOfThreads is important, as ITK uses this number when constructing the ThreadPool.)
+      itk::MultiThreaderBase::SetGlobalDefaultNumberOfThreads(
+        itk::MultiThreaderBase::GetGlobalDefaultNumberOfThreads());
+    }
+    else
+    {
+      itkExceptionMacro("\"" << commandLineKey << "\" command-line argument \"" << commandLineArgument
+                             << "\" must be a positive " << std::numeric_limits<itk::ThreadIdType>::digits
+                             << "-bits number.");
+    }
   }
 } // end SetMaximumNumberOfThreads()
 

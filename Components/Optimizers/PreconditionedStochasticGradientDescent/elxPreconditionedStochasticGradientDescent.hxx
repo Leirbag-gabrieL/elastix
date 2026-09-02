@@ -35,40 +35,6 @@ namespace elastix
 {
 
 /**
- * ********************** Constructor ***********************
- */
-
-template <typename TElastix>
-PreconditionedStochasticGradientDescent<TElastix>::PreconditionedStochasticGradientDescent()
-{
-  this->m_MaximumNumberOfSamplingAttempts = 0;
-  this->m_CurrentNumberOfSamplingAttempts = 0;
-  this->m_PreviousErrorAtIteration = 0;
-  this->m_AutomaticParameterEstimationDone = false;
-
-  this->m_AutomaticParameterEstimation = false;
-  this->m_MaximumStepLength = 1.0;
-  this->m_MaximumStepLengthRatio = 1.0;
-  this->m_RegularizationKappa = 0.8;
-  this->m_ConditionNumber = 2.0;
-  this->m_NoiseFactor = 1.0;
-
-  this->m_NumberOfGradientMeasurements = 0;
-  this->m_NumberOfJacobianMeasurements = 0;
-  this->m_NumberOfSamplesForPrecondition = 0;
-  this->m_NumberOfSamplesForNoiseCompensationFactor = 0;
-  this->m_NumberOfSpatialSamples = 5000;
-  this->m_SigmoidScaleFactor = 0.1;
-  this->m_GlobalStepSize = 0;
-
-  this->m_AdvancedTransform = nullptr;
-
-  this->m_UseNoiseCompensation = true;
-
-} // Constructor
-
-
-/**
  * ***************** BeforeRegistration ***********************
  */
 
@@ -526,19 +492,19 @@ PreconditionedStochasticGradientDescent<TElastix>::AutomaticPreconditionerEstima
   }
 
   /** Getting pointers to the samplers. */
-  const unsigned int                   M = this->GetElastix()->GetNumberOfMetrics();
-  std::vector<ImageSamplerBasePointer> originalSampler(M);
-  for (unsigned int m = 0; m < M; ++m)
+  const unsigned int                   numberOfMetrics = this->GetElastix()->GetNumberOfMetrics();
+  std::vector<ImageSamplerBasePointer> originalSampler(numberOfMetrics);
+  for (unsigned int m = 0; m < numberOfMetrics; ++m)
   {
     ImageSamplerBasePointer sampler = this->GetElastix()->GetElxMetricBase(m)->GetAdvancedMetricImageSampler();
     originalSampler[m] = sampler.GetPointer();
   }
 
   /** Create a random sampler with more samples that can be used for the pre-conditioner computation. */
-  // std::vector< ImageRandomCoordinateSamplerPointer > preconditionSamplers( M, 0 ); // very slow, leave this for
-  // reminder. YQ
-  std::vector<ImageRandomSamplerPointer> preconditionSamplers(M);
-  for (unsigned int m = 0; m < M; ++m)
+  // std::vector< ImageRandomCoordinateSamplerPointer > preconditionSamplers( numberOfMetrics, 0 ); // very slow, leave
+  // this for reminder. YQ
+  std::vector<ImageRandomSamplerPointer> preconditionSamplers(numberOfMetrics);
+  for (unsigned int m = 0; m < numberOfMetrics; ++m)
   {
     ImageSamplerBasePointer sampler = this->GetElastix()->GetElxMetricBase(m)->GetAdvancedMetricImageSampler();
     // preconditionSamplers[ m ] = ImageRandomCoordinateSamplerType::New();
@@ -599,7 +565,7 @@ PreconditionedStochasticGradientDescent<TElastix>::AutomaticPreconditionerEstima
 #endif
 
   /** Set the sampler back to the original. */
-  for (unsigned int m = 0; m < M; ++m)
+  for (unsigned int m = 0; m < numberOfMetrics; ++m)
   {
     this->GetElastix()->GetElxMetricBase(m)->SetAdvancedMetricImageSampler(originalSampler[m]);
   }
@@ -695,13 +661,13 @@ PreconditionedStochasticGradientDescent<TElastix>::SampleGradients(const Paramet
                                                                    double &               ee)
 {
   /** Some shortcuts. */
-  const unsigned int M = this->GetElastix()->GetNumberOfMetrics();
+  const unsigned int numberOfMetrics = this->GetElastix()->GetNumberOfMetrics();
 
   /** Variables for sampler support. Each metric may have a sampler. */
-  std::vector<bool>                                useRandomSampleRegionVec(M, false);
-  std::vector<ImageRandomSamplerBasePointer>       randomSamplerVec(M);
-  std::vector<ImageRandomCoordinateSamplerPointer> randomCoordinateSamplerVec(M);
-  std::vector<ImageGridSamplerPointer>             gridSamplerVec(M);
+  std::vector<bool>                                useRandomSampleRegionVec(numberOfMetrics, false);
+  std::vector<ImageRandomSamplerBasePointer>       randomSamplerVec(numberOfMetrics);
+  std::vector<ImageRandomCoordinateSamplerPointer> randomCoordinateSamplerVec(numberOfMetrics);
+  std::vector<ImageGridSamplerPointer>             gridSamplerVec(numberOfMetrics);
 
   /** If new samples every iteration, get each sampler, and check if it is
    * a kind of random sampler. If yes, prepare an additional grid sampler
@@ -710,7 +676,7 @@ PreconditionedStochasticGradientDescent<TElastix>::SampleGradients(const Paramet
   bool stochasticgradients = false;
   if (this->GetNewSamplesEveryIteration())
   {
-    for (unsigned int m = 0; m < M; ++m)
+    for (unsigned int m = 0; m < numberOfMetrics; ++m)
     {
       /** Get the sampler. */
       ImageSamplerBasePointer sampler = this->GetElastix()->GetElxMetricBase(m)->GetAdvancedMetricImageSampler();
@@ -764,7 +730,7 @@ PreconditionedStochasticGradientDescent<TElastix>::SampleGradients(const Paramet
     } // end for loop over metrics
 
     /** Start a second loop over all metrics to turn off the random region sampling. */
-    for (unsigned int m = 0; m < M; ++m)
+    for (unsigned int m = 0; m < numberOfMetrics; ++m)
     {
       if (randomCoordinateSamplerVec[m].IsNotNull())
       {
@@ -812,7 +778,7 @@ PreconditionedStochasticGradientDescent<TElastix>::SampleGradients(const Paramet
     if (stochasticgradients)
     {
       /** Set grid sampler(s) and get exact derivative. */
-      for (unsigned int m = 0; m < M; ++m)
+      for (unsigned int m = 0; m < numberOfMetrics; ++m)
       {
         if (gridSamplerVec[m].IsNotNull())
         {
@@ -828,7 +794,7 @@ PreconditionedStochasticGradientDescent<TElastix>::SampleGradients(const Paramet
       exactgg += inner_product(searchDirection, exactgradient);
 
       /** Set random sampler(s), select new spatial samples and get approximate derivative. */
-      for (unsigned int m = 0; m < M; ++m)
+      for (unsigned int m = 0; m < numberOfMetrics; ++m)
       {
         if (randomSamplerVec[m].IsNotNull())
         {
@@ -876,7 +842,7 @@ PreconditionedStochasticGradientDescent<TElastix>::SampleGradients(const Paramet
   ee = std::abs(diffgg);
 
   /** Set back useRandomSampleRegion flag to what it was. */
-  for (unsigned int m = 0; m < M; ++m)
+  for (unsigned int m = 0; m < numberOfMetrics; ++m)
   {
     if (randomCoordinateSamplerVec[m].IsNotNull())
     {

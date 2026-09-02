@@ -109,11 +109,64 @@ Configuration::PrintParameterMap() const
   // Separate clearly in log-file, before and after writing the parameter map.
   log::info_to_log_file(std::ostringstream{}
                         << "\n=============== start of ParameterMap ===============\n"
-                        << Conversion::ParameterMapToString(m_ParameterMapInterface->GetParameterMap(),
+                        << Conversion::ParameterMapToString(m_ParameterMapInterface.GetParameterMap(),
                                                             ParameterMapStringFormat::LegacyTxt)
                         << "\n=============== end of ParameterMap ===============\n");
 
 } // end PrintParameterMap()
+
+
+/**
+ * ************************ AccessParameter ***************************
+ */
+
+void
+Configuration::AccessParameter(const std::string & parameterName) const
+{
+  std::size_t i{};
+
+  for (const auto & pair : m_ParameterMapInterface.GetParameterMap())
+  {
+    if (pair.first == parameterName)
+    {
+      // Conceptually, m_ParameterAccessFlags[i] is mutable.
+      m_ParameterAccessFlags[i] = true;
+      return;
+    }
+    ++i;
+  }
+}
+
+
+/**
+ * ************************ AfterRegistration ***************************
+ */
+
+void
+Configuration::AfterRegistration()
+{
+  const auto &       parameterMap = m_ParameterMapInterface.GetParameterMap();
+  const bool * const parameterAccessFlags = m_ParameterAccessFlags.get();
+
+  if (const auto numberOfUnusedParameters =
+        std::count(parameterAccessFlags, parameterAccessFlags + parameterMap.size(), false);
+      numberOfUnusedParameters > 0)
+  {
+    log::warn("WARNING: " + std::to_string(numberOfUnusedParameters) + " unused parameter(s) found!");
+    std::size_t i{};
+
+    for (const auto & pair : parameterMap)
+    {
+      if (!parameterAccessFlags[i])
+      {
+        log::warn("  Unused parameter: " + pair.first);
+      }
+      ++i;
+    }
+  }
+}
+
+
 /**
  * ************************ BeforeAll ***************************
  */
@@ -215,14 +268,16 @@ Configuration::Initialize(const CommandLineArgumentMapType & _arg)
   }
 
   /** Connect the parameter file reader to the interface. */
-  m_ParameterMapInterface->SetParameterMap(
+  m_ParameterMapInterface.SetParameterMap(
     AddDataFromExternalTransformFile(m_ParameterFileName, parameterFileParser->GetParameterMap()));
 
+  m_ParameterAccessFlags = std::make_unique<bool[]>(m_ParameterMapInterface.GetParameterMap().size());
+
   /** Silently check in the parameter file if error messages should be printed. */
-  m_ParameterMapInterface->SetPrintErrorMessages(false);
+  m_ParameterMapInterface.SetPrintErrorMessages(false);
   bool printErrorMessages = true;
   this->ReadParameter(printErrorMessages, "PrintErrorMessages", 0, false);
-  m_ParameterMapInterface->SetPrintErrorMessages(printErrorMessages);
+  m_ParameterMapInterface.SetPrintErrorMessages(printErrorMessages);
 
   /** Set the initialized flag. */
   m_IsInitialized = true;
@@ -237,7 +292,7 @@ Configuration::Initialize(const CommandLineArgumentMapType & _arg)
  * ********************** Initialize ****************************
  */
 
-int
+void
 Configuration::Initialize(const CommandLineArgumentMapType &                 _arg,
                           const itk::ParameterFileParser::ParameterMapType & inputMap)
 {
@@ -252,19 +307,18 @@ Configuration::Initialize(const CommandLineArgumentMapType &                 _ar
   /** Store the command line arguments. */
   m_CommandLineArgumentMap = _arg;
 
-  m_ParameterMapInterface->SetParameterMap(AddDataFromExternalTransformFile(m_ParameterFileName, inputMap));
+  m_ParameterMapInterface.SetParameterMap(AddDataFromExternalTransformFile(m_ParameterFileName, inputMap));
+
+  m_ParameterAccessFlags = std::make_unique<bool[]>(m_ParameterMapInterface.GetParameterMap().size());
 
   /** Silently check in the parameter file if error messages should be printed. */
-  m_ParameterMapInterface->SetPrintErrorMessages(false);
+  m_ParameterMapInterface.SetPrintErrorMessages(false);
   bool printErrorMessages = true;
   this->ReadParameter(printErrorMessages, "PrintErrorMessages", 0, false);
-  m_ParameterMapInterface->SetPrintErrorMessages(printErrorMessages);
+  m_ParameterMapInterface.SetPrintErrorMessages(printErrorMessages);
 
   /** Set the initialized flag. */
   m_IsInitialized = true;
-
-  /** Return a value.*/
-  return 0;
 
 } // end Initialize()
 

@@ -149,7 +149,7 @@ elastix_export_target(elxCore)
 #---------------------------------------------------------------------
 # Link against other libraries.
 
-target_link_libraries(elxCore
+target_link_libraries(elxCore PUBLIC
   elxCommon
   param # Needed for elxConfiguration
   #  ${ITK_LIBRARIES}
@@ -161,6 +161,23 @@ target_link_libraries(elxCore
 target_include_directories(elxCore PRIVATE
   ${ITK_CMAKE_DIR}/../Modules/ThirdParty/DoubleConversion/src/double-conversion)
 
+target_include_directories(elxCore PUBLIC
+  $<BUILD_INTERFACE:${elastix_SOURCE_DIR}/Core>
+  $<BUILD_INTERFACE:${elastix_SOURCE_DIR}/Core/Install>
+  $<BUILD_INTERFACE:${elastix_SOURCE_DIR}/Core/Kernel>
+  $<BUILD_INTERFACE:${elastix_SOURCE_DIR}/Core/ComponentBaseClasses>
+  $<BUILD_INTERFACE:${elastix_SOURCE_DIR}/Core/Configuration>
+  $<BUILD_INTERFACE:${elastix_SOURCE_DIR}/Core/Main>
+  $<BUILD_INTERFACE:${elastix_BINARY_DIR}>
+  $<INSTALL_INTERFACE:${ELASTIX_INCLUDE_DIR}/Core>
+  $<INSTALL_INTERFACE:${ELASTIX_INCLUDE_DIR}/Core/Install>
+  $<INSTALL_INTERFACE:${ELASTIX_INCLUDE_DIR}/Core/Kernel>
+  $<INSTALL_INTERFACE:${ELASTIX_INCLUDE_DIR}/Core/ComponentBaseClasses>
+  $<INSTALL_INTERFACE:${ELASTIX_INCLUDE_DIR}/Core/Configuration>
+  $<INSTALL_INTERFACE:${ELASTIX_INCLUDE_DIR}/Core/Main>
+  $<INSTALL_INTERFACE:${ELASTIX_INCLUDE_DIR}>
+)
+
 elastix_export_target(elxCommon)
 elastix_export_target(param)
 
@@ -168,13 +185,20 @@ elastix_export_target(param)
 # Define the mevis dcm tiff lib to which we should link.
 set(mevisdcmtifflib mevisdcmtiff)
 
+# For ITK 6+: executables link to the IO factory meta-module targets which carry
+# INTERFACE_INCLUDE_DIRECTORIES pointing to the generated factory registration
+# headers (itkImageIOFactoryRegisterManager.h, etc.) and INTERFACE_COMPILE_DEFINITIONS
+# enabling the registration managers. ELASTIX_ITK_EXECUTABLE_LIBRARIES is set
+# by CMake/ElastixITKDeps.cmake (included from the top-level CMakeLists.txt).
+# For ITK 5.x: ${ITK_LIBRARIES} is used (factory registration handled globally
+# by UseITK.cmake via directory-scoped COMPILE_DEFINITIONS).
 set(ELASTIX_TARGET_LINK_LIBRARIES
   param
   elxCommon
   elxCore
   ${mevisdcmtifflib}
   ${AllComponentLibs}
-  ${ITK_LIBRARIES}
+  ${ELASTIX_ITK_EXECUTABLE_LIBRARIES}
 )
 if(ELASTIX_USE_OPENCL)
   set(ELASTIX_TARGET_LINK_LIBRARIES  ${ELASTIX_TARGET_LINK_LIBRARIES} elxOpenCL)
@@ -200,7 +224,7 @@ if(ELASTIX_BUILD_EXECUTABLE)
   if (WASI OR EMSCRIPTEN)
     target_compile_definitions(elastix_exe PUBLIC ELX_NO_FILESYSTEM_ACCESS)
   endif()
-  target_link_libraries(elastix_exe ${ELASTIX_TARGET_LINK_LIBRARIES})
+  target_link_libraries(elastix_exe PUBLIC ${ELASTIX_TARGET_LINK_LIBRARIES})
   if (MSVC)
     target_sources(elastix_exe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/utf8.manifest)
   endif()
@@ -226,7 +250,7 @@ target_compile_definitions(elastix_lib PRIVATE ELX_CMAKE_VERSION="${CMAKE_VERSIO
 if (WASI OR EMSCRIPTEN)
   target_compile_definitions(elastix_lib PUBLIC ELX_NO_FILESYSTEM_ACCESS)
 endif()
-target_link_libraries(elastix_lib ${ELASTIX_TARGET_LINK_LIBRARIES})
+target_link_libraries(elastix_lib PUBLIC ${ELASTIX_TARGET_LINK_LIBRARIES})
 
 #---------------------------------------------------------------------
 # Create the transformix executable.
@@ -248,7 +272,7 @@ if(ELASTIX_BUILD_EXECUTABLE)
   if (WASI OR EMSCRIPTEN)
     target_compile_definitions(transformix_exe PUBLIC ELX_NO_FILESYSTEM_ACCESS)
   endif()
-  target_link_libraries(transformix_exe ${ELASTIX_TARGET_LINK_LIBRARIES})
+  target_link_libraries(transformix_exe PUBLIC ${ELASTIX_TARGET_LINK_LIBRARIES})
   if (MSVC)
     target_sources(transformix_exe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/utf8.manifest)
   endif()
@@ -270,7 +294,7 @@ add_library(transformix_lib
   ${InstallFilesForExecutables}
 )
 set_target_properties(transformix_lib PROPERTIES OUTPUT_NAME transformix)
-target_link_libraries(transformix_lib ${ELASTIX_TARGET_LINK_LIBRARIES})
+target_link_libraries(transformix_lib PUBLIC ${ELASTIX_TARGET_LINK_LIBRARIES})
 target_compile_definitions(transformix_lib PRIVATE ELX_CMAKE_VERSION="${CMAKE_VERSION}")
 if (WASI OR EMSCRIPTEN)
   target_compile_definitions(transformix_lib PUBLIC ELX_NO_FILESYSTEM_ACCESS)

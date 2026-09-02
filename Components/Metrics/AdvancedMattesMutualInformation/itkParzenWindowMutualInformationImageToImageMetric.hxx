@@ -78,7 +78,7 @@ ParzenWindowMutualInformationImageToImageMetric<TFixedImage, TMovingImage>::GetV
   this->ComputePDFs(parameters);
 
   /** Normalize the pdfs: p = alpha h. */
-  this->NormalizeJointPDF(this->m_JointPDF, this->m_Alpha);
+  Superclass::NormalizeJointPDF(this->m_JointPDF, this->m_Alpha);
 
   /** Compute the fixed and moving marginal pdfs, by summing over the joint pdf. */
   this->ComputeMarginalPDF(this->m_JointPDF, this->m_FixedImageMarginalPDF, 0);
@@ -156,7 +156,7 @@ ParzenWindowMutualInformationImageToImageMetric<TFixedImage, TMovingImage>::GetV
   this->ComputePDFsAndPDFDerivatives(parameters);
 
   /** Normalize the pdfs: p = alpha h. */
-  this->NormalizeJointPDF(this->m_JointPDF, this->m_Alpha);
+  Superclass::NormalizeJointPDF(this->m_JointPDF, this->m_Alpha);
 
   /** Compute the fixed and moving marginal pdf by summing over the histogram. */
   this->ComputeMarginalPDF(this->m_JointPDF, this->m_FixedImageMarginalPDF, 0);
@@ -245,7 +245,7 @@ ParzenWindowMutualInformationImageToImageMetric<TFixedImage, TMovingImage>::GetV
   this->ComputePDFs(parameters);
 
   /** Normalize the joint histogram by alpha. */
-  this->NormalizeJointPDF(this->m_JointPDF, this->m_Alpha);
+  Superclass::NormalizeJointPDF(this->m_JointPDF, this->m_Alpha);
 
   /** Compute the fixed and moving marginal pdf by summing over the histogram. */
   this->ComputeMarginalPDF(this->m_JointPDF, this->m_FixedImageMarginalPDF, 0);
@@ -294,6 +294,11 @@ ParzenWindowMutualInformationImageToImageMetric<TFixedImage, TMovingImage>::Comp
     jacobianPreconditioner = DerivativeType(nzji.size());
     preconditioningDivisor = DerivativeType(this->GetNumberOfParameters(), 0.0);
   }
+
+  const auto & jointPDFWindowSize = Superclass::GetJointPDFWindowSize();
+
+  // Create a buffer of Parzen values for both the fixed and the moving image.
+  const auto parzenValues = make_unique_for_overwrite<PDFValueType[]>(jointPDFWindowSize[0] + jointPDFWindowSize[1]);
 
   /** Get a handle to the sample container. */
   ImageSampleContainerPointer sampleContainer = this->GetImageSampler()->GetOutput();
@@ -354,7 +359,8 @@ ParzenWindowMutualInformationImageToImageMetric<TFixedImage, TMovingImage>::Comp
       }
 
       /** Compute this sample's contribution to the joint distributions. */
-      this->UpdateDerivativeLowMemory(fixedImageValue, movingImageValue, imageJacobian, nzji, derivative);
+      this->UpdateDerivativeLowMemory(
+        fixedImageValue, movingImageValue, imageJacobian, nzji, derivative, parzenValues.get());
 
     } // end sampleOk
   } // end loop over sample container
@@ -433,27 +439,16 @@ ParzenWindowMutualInformationImageToImageMetric<TFixedImage, TMovingImage>::Thre
     preconditioningDivisor = DerivativeType(this->GetNumberOfParameters(), 0.0);
   }
 
-  /** Get a handle to the sample container. */
-  ImageSampleContainerPointer sampleContainer = this->GetImageSampler()->GetOutput();
-  const size_t                sampleContainerSize{ sampleContainer->size() };
+  const auto & jointPDFWindowSize = Superclass::GetJointPDFWindowSize();
 
-  /** Get the samples for this thread. */
-  const auto nrOfSamplesPerThreads = static_cast<unsigned long>(
-    std::ceil(static_cast<double>(sampleContainerSize) / static_cast<double>(Self::GetNumberOfWorkUnits())));
-
-  const auto pos_begin = std::min<size_t>(nrOfSamplesPerThreads * threadId, sampleContainerSize);
-  const auto pos_end = std::min<size_t>(nrOfSamplesPerThreads * (threadId + 1), sampleContainerSize);
-
-  /** Create iterator over the sample container. */
-  const auto beginOfSampleContainer = sampleContainer->cbegin();
-  const auto fbegin = beginOfSampleContainer + pos_begin;
-  const auto fend = beginOfSampleContainer + pos_end;
+  // Create a buffer of Parzen values for both the fixed and the moving image.
+  const auto parzenValues = make_unique_for_overwrite<PDFValueType[]>(jointPDFWindowSize[0] + jointPDFWindowSize[1]);
 
   /** Loop over sample container and compute contribution of each sample to pdfs. */
-  for (auto fiter = fbegin; fiter != fend; ++fiter)
+  for (const auto & sample : this->Superclass::GetRangeOfSamples(threadId))
   {
     /** Read fixed coordinates and create some variables. */
-    const FixedImagePointType & fixedPoint = fiter->m_ImageCoordinates;
+    const FixedImagePointType & fixedPoint = sample.m_ImageCoordinates;
     RealType                    movingImageValue;
     MovingImageDerivativeType   movingImageDerivative;
 
@@ -475,7 +470,7 @@ ParzenWindowMutualInformationImageToImageMetric<TFixedImage, TMovingImage>::Thre
     if (sampleOk)
     {
       /** Get the fixed image value. */
-      auto fixedImageValue = static_cast<RealType>(fiter->m_ImageValue);
+      auto fixedImageValue = static_cast<RealType>(sample.m_ImageValue);
 
       /** Make sure the values fall within the histogram range. */
       fixedImageValue = this->GetFixedImageLimiter()->Evaluate(fixedImageValue);
@@ -495,9 +490,9 @@ ParzenWindowMutualInformationImageToImageMetric<TFixedImage, TMovingImage>::Thre
 #endif
 
       /** If desired, apply the technique introduced by Tustison. */
-      TransformJacobianType jacobian;
       if (this->GetUseJacobianPreconditioning())
       {
+        TransformJacobianType jacobian;
         this->EvaluateTransformJacobian(fixedPoint, jacobian, nzji);
 
         this->ComputeJacobianPreconditioner(jacobian, nzji, jacobianPreconditioner, preconditioningDivisor);
@@ -515,7 +510,8 @@ ParzenWindowMutualInformationImageToImageMetric<TFixedImage, TMovingImage>::Thre
       }
 
       /** Compute this sample's contribution to the joint distributions. */
-      this->UpdateDerivativeLowMemory(fixedImageValue, movingImageValue, imageJacobian, nzji, derivative);
+      this->UpdateDerivativeLowMemory(
+        fixedImageValue, movingImageValue, imageJacobian, nzji, derivative, parzenValues.get());
 
     } // end sampleOk
   } // end loop over sample container
@@ -689,7 +685,8 @@ ParzenWindowMutualInformationImageToImageMetric<TFixedImage, TMovingImage>::Upda
   const RealType                     movingImageValue,
   const DerivativeType &             imageJacobian,
   const NonZeroJacobianIndicesType & nzji,
-  DerivativeType &                   derivative) const
+  DerivativeType &                   derivative,
+  PDFValueType * const               parzenValues) const
 {
   /** In this function we need to do (see eq. 24 of Thevenaz [3]):
    *      derivative -= constant * imageJacobian *
@@ -717,20 +714,16 @@ ParzenWindowMutualInformationImageToImageMetric<TFixedImage, TMovingImage>::Upda
   const int movingParzenWindowIndex =
     static_cast<int>(std::floor(movingImageParzenWindowTerm + this->m_MovingParzenTermToIndexOffset));
 
-  const auto numberOfFixedParzenValues = Superclass::m_JointPDFWindow.GetSize()[1];
-  const auto numberOfDerivedMovingParzenValues = Superclass::m_JointPDFWindow.GetSize()[0];
-
-  // Create a buffer of Parzen values for both the fixed and the moving image.
-  const auto parzenValues =
-    std::make_unique<PDFValueType[]>(numberOfFixedParzenValues + numberOfDerivedMovingParzenValues);
+  const auto numberOfFixedParzenValues = Superclass::GetJointPDFWindowSize()[1];
+  const auto numberOfDerivedMovingParzenValues = Superclass::GetJointPDFWindowSize()[0];
 
   /** Compute the fixed Parzen values. */
-  PDFValueType * const fixedParzenValues = parzenValues.get();
+  PDFValueType * const fixedParzenValues = parzenValues;
   Superclass::EvaluateParzenValues(
     fixedImageParzenWindowTerm, fixedParzenWindowIndex, *Superclass::m_FixedKernel, fixedParzenValues);
 
   /** Compute the derivatives of the moving Parzen window. */
-  PDFValueType * const derivativeMovingParzenValues = parzenValues.get() + numberOfFixedParzenValues;
+  PDFValueType * const derivativeMovingParzenValues = parzenValues + numberOfFixedParzenValues;
   Superclass::EvaluateParzenValues(movingImageParzenWindowTerm,
                                    movingParzenWindowIndex,
                                    *Superclass::m_DerivativeMovingKernel,

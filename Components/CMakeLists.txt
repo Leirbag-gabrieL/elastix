@@ -5,27 +5,21 @@ project(elxComponents)
 
 #---------------------------------------------------------------------
 # Set the libraries to be linked.
-
-# Linux gave an error, if param was linked. This was only
-# when we still used .dll's. I'm not sure if it will still
-# give an error, but as long as linux does not complain
-# about the missing param, just leave it out.
-if(UNIX)
-  if(NOT APPLE)
-    set(elxLinkLibs
-      elxCommon
-      elxCore
-      ${ITK_LIBRARIES})
-  endif()
-endif()
-
-# Interestingly, visual c++ and MAC-GCC do need param
-if(WIN32 OR APPLE)
+#
+# For ITK 6+, component libraries inherit all ITK processing module dependencies
+# transitively via elxCore -> elxCommon (PUBLIC link). No additional direct
+# ITK module link is needed here.
+# For ITK 5.x, ${ITK_LIBRARIES} provides full coverage (factory registration
+# is handled globally by UseITK.cmake).
+if(ITK_VERSION_MAJOR GREATER_EQUAL 6)
   set(elxLinkLibs
-    param
-    elxCommon
     elxCore
-    ${ITK_LIBRARIES})
+  )
+else()
+  set(elxLinkLibs
+    elxCore
+    ${ITK_LIBRARIES}
+  )
 endif()
 
 #--------------------------------------------------------------------
@@ -129,7 +123,8 @@ macro(ADD_ELXCOMPONENT name)
     else()
       add_library(${name} STATIC ${filelist})
     endif()
-    target_link_libraries(${name} ${elxLinkLibs})
+    target_link_libraries(${name} PUBLIC ${elxLinkLibs})
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     if(NOT ELASTIX_NO_INSTALL_DEVELOPMENT)
       install(TARGETS ${name}
         ARCHIVE DESTINATION ${ELASTIX_ARCHIVE_DIR}
